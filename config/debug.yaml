@@ -1,0 +1,17 @@
+app:
+  name: go-wire
+  mode: debug
+  port: 8080
+redis:
+  default:
+    addr: 127.0.0.1:6379
+    password: ""
+    db: 0
+log:
+  driver: zap
+  director: log
+  level: info
+  maxAge: 7
+  maxSize: 100
+  maxBackups: 10
+  format: console
