@@ -3,17 +3,46 @@ package logger
 import (
 	"context"
 	"fmt"
+	"go-wire/config"
 	"go-wire/util"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 	"os"
 	"path"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 type zapLogger struct {
-	logger *zap.Logger
+	log *zap.Logger
+}
+
+func NewZapLogger(cfg *config.Config) (Logger, error) {
+	if err := ensureLogDirectoryExists(cfg.Log.Director); err != nil {
+		return nil, err
+	}
+	writer := getLogWriter(cfg.Log.Director, cfg.Log.MaxSize, cfg.Log.MaxBackups, cfg.Log.MaxAge)
+
+	// debug模式输出控制台
+	if cfg.App.Mode == "debug" {
+		writer = zapcore.NewMultiWriteSyncer(zapcore.AddSync(os.Stdout), writer)
+	}
+	// 创建编码器配置
+	encoderConfig := getEncoderConfig()
+	var core zapcore.Core
+	if cfg.Log.Format == "json" {
+		// 如果是JSON格式则使用JSONEncoder
+		core = zapcore.NewCore(zapcore.NewJSONEncoder(encoderConfig), writer, levelPriority(getLevel(cfg.Log.Level)))
+	} else {
+		// 如果是Console格式则使用ConsoleEncoder
+		core = zapcore.NewCore(zapcore.NewConsoleEncoder(encoderConfig), writer, levelPriority(getLevel(cfg.Log.Level)))
+	}
+
+	log := zap.New(core)
+	log = log.WithOptions(zap.AddCaller())
+
+	return &zapLogger{log: log}, nil
 }
 
 // FieldErr 用于将 error 包装成 zap.Field，方便统一日志格式。
@@ -36,8 +65,8 @@ func (l *zapLogger) toZapFields(fields []Field) []zap.Field {
 // logWithTraceID 带有 TraceID 的日志记录
 func (l *zapLogger) withTrace(ctx context.Context, level zapcore.Level, msg string, fields ...Field) {
 	traceID, _ := ctx.Value("TraceID").(string)
-	if l.logger.Core().Enabled(level) {
-		l.logger.With(zap.Any("trace_id", traceID)).WithOptions(zap.AddCallerSkip(2)).Log(level, msg, l.toZapFields(fields)...)
+	if l.log.Core().Enabled(level) {
+		l.log.With(zap.Any("trace_id", traceID)).WithOptions(zap.AddCallerSkip(2)).Log(level, msg, l.toZapFields(fields)...)
 	}
 }
 
@@ -55,6 +84,10 @@ func (l *zapLogger) Error(ctx context.Context, msg string, fields ...Field) {
 }
 func (l *zapLogger) Fatal(ctx context.Context, msg string, fields ...Field) {
 	l.withTrace(ctx, zapcore.FatalLevel, msg, fields...)
+}
+
+func (l *zapLogger) Sync() error {
+	return l.log.Sync()
 }
 
 // 创建日志目录

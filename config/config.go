@@ -1,23 +1,26 @@
 package config
 
 import (
-	"bytes"
-	"embed"
 	"flag"
 	"fmt"
+
 	"github.com/google/wire"
 	"github.com/spf13/viper"
-	"path/filepath"
 )
 
 type Config struct {
 	App struct {
-		Name string
-		Mode string
-		Port int
+		Name     string
+		Mode     string
+		Port     int
+		Limit    float64
+		Burst    int
+		ClientID string
 	}
-	Redis map[string]RedisConfig
-	Log   struct {
+	AllowOrigins      []string
+	AllowedOriginsMap map[string]struct{}
+	Redis             map[string]RedisConfig
+	Log               struct {
 		Driver     string
 		Director   string // 日志文件夹
 		Level      string // 日志级别
@@ -34,9 +37,6 @@ type RedisConfig struct {
 	DB       int
 }
 
-//go:embed *.yaml
-var configFS embed.FS
-
 var ProviderSet = wire.NewSet(NewConfig)
 
 func NewConfig() (*Config, error) {
@@ -44,29 +44,29 @@ func NewConfig() (*Config, error) {
 	env := flag.String("env", "debug", "配置环境(debug|prod|test)")
 	port := flag.Int("port", 0, "自定义端口（可选）")
 	flag.Parse()
-	fileName := fmt.Sprintf("%s.yaml", *env)
-
-	// 读取嵌入的配置文件
-	data, err := configFS.ReadFile(fileName)
-	if err != nil {
-		return nil, fmt.Errorf("无法读取配置文件 %s: %w", fileName, err)
-	}
 
 	v := viper.New()
-	v.SetConfigType(filepath.Ext(fileName)[1:])
+	v.AddConfigPath("config") // 指定根目录下的 config 文件夹
+	v.SetConfigName(*env)     // 例如 "debug" 对应 debug.yaml
+	v.SetConfigType("yaml")
 
-	if err = v.ReadConfig(bytes.NewReader(data)); err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
 	var cfg Config
-	if err = v.Unmarshal(&cfg); err != nil {
+	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("配置解析失败: %w", err)
 	}
 
 	// 修改端口
 	if port != nil && *port > 0 {
 		cfg.App.Port = *port
+	}
+
+	cfg.AllowedOriginsMap = make(map[string]struct{}, len(cfg.AllowOrigins))
+	for _, origin := range cfg.AllowOrigins {
+		cfg.AllowedOriginsMap[origin] = struct{}{}
 	}
 
 	fmt.Println("配置加载成功", cfg)

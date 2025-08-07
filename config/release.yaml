@@ -2,13 +2,14 @@ app:
   name: go-wire
   mode: release
   port: 8080
+allow_origins:
+  - "http://192.168.3.42:8000"
 redis:
   default:
     addr: 127.0.0.1:6379
     password: ""
     db: 0
 log:
-  driver: zap
   director: log
   level: info
   maxAge: 7

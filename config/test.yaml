@@ -8,7 +8,6 @@ redis:
     password: ""
     db: 0
 log:
-  driver: zap
   director: log
   level: info
   maxAge: 7
